@@ -20,10 +20,8 @@ class VinculacionRequest(BaseModel):
     codigo: int
 
 class LoginRequest(BaseModel):
-    rol: str
-    contraseña: str 
-    codigo_vinculacion: str
-
+    nombre: str
+    contrasena: str 
 class ProductoUpdate(BaseModel):
     nombre: str
     descripcion: str
@@ -84,23 +82,24 @@ def login(data: LoginRequest):
 
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
-
+    
     # ⚠️ Aquí podrías usar hash con bcrypt en lugar de MD5
-    hashed_pass = hashlib.md5(data.contraseña.encode()).hexdigest()
-
+    #hashed_pass = hashlib.md5(data.contraseña.encode()).hexdigest()
+    print("llegada",data)
     cursor.execute("""
-        SELECT r.id, r.rol, u.contraseña
+        SELECT u.nombre, u.contraseña, r.rol 
         FROM usuarios u
         JOIN rol r ON u.rol_id = r.id
-        WHERE r.rol = %s 
+        WHERE u.nombre = %s 
         AND u.contraseña = %s 
-        AND EXISTS (
-            SELECT 1 FROM codigo WHERE codigo_vinculacion = %s
-        )
-    """, (data.rol, hashed_pass, data.codigo_vinculacion))
+    """, (data.nombre, data.contrasena))
 
     usuario = cursor.fetchone()
     conn.close()
+
+    print("cursor", cursor)
+    #print("hashed_pass",hashed_pass)
+    print("salida",usuario)
 
     if usuario:
         return {
@@ -110,8 +109,6 @@ def login(data: LoginRequest):
         }
     else:
         raise HTTPException(status_code=401, detail="Credenciales inválidas o vinculación no válida")
-
-
 
 
 # --- Bodega ver producto ---
