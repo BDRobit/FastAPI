@@ -40,6 +40,20 @@ class UsuarioNombre(BaseModel):
 class UsuarioContrasena(BaseModel):
     contrasena: str
 
+class CategoriaUpdate(BaseModel): #actualiza
+    categoria_id: int    
+
+# Productos 
+class ProductoUpdate(BaseModel): #  precio y cantidad
+    precio: float | None = None
+    cantidad: int | None = None
+
+class ProductoNuevo(BaseModel): # nuevo
+    nombre: str
+    categoria_id: int
+    precio: float
+    cantidad: int
+
 # Conexión a MySQL
 def get_db_connection():
     return mysql.connector.connect(
@@ -345,10 +359,120 @@ def actualizar_contrasena_usuario(id: int, usuario: UsuarioContrasena):
     return {"mensaje": "Contraseña actualizada correctamente", "id": id}
 
 
+# 
+@app.get("/muestra_productos")
+def muestra_productos():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)  # obligatorio para que devuelva dict
+    
+    cursor.execute("""
+		SELECT p.id, p.nombre, c.categoria, d.valor, d.cantidad   
+        FROM productos p
+        JOIN categorias c ON p.categoria_id = c.id
+		JOIN datos_productos d ON p.id = d.producto_id;
+    """)
+    
+    productos = cursor.fetchall()
+    conn.close()
+    
+    if not productos:
+        raise HTTPException(status_code=404, detail="No hay productos registrados")
+    
+    return [
+        {
+            "id": prod["id"],
+            "nombre": prod["nombre"],
+            "categoria": prod["categoria"],
+            "precio": prod["valor"],
+            "stock": prod["cantidad"]
+        }
+        for prod in productos
+    ]
 
 
 
+@app.put("/producto/{id}/")
+def actualizar_producto(id: int, datos: ProductoUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    # Construimos query dinámicamente según los campos que vienen
+    campos = []
+    valores = []
+    
+    if datos.precio is not None:
+        campos.append("valor = %s")
+        valores.append(datos.precio)
+    if datos.cantidad is not None:
+        campos.append("cantidad = %s")
+        valores.append(datos.cantidad)
+    
+    if not campos:
+        raise HTTPException(status_code=400, detail="No se proporcionaron datos para actualizar")
+    
+    valores.append(id)
+    query = f"UPDATE datos_productos SET {', '.join(campos)} WHERE producto_id = %s"
+    cursor.execute(query, valores)
+    conn.commit()
+    
+    if cursor.rowcount == 0:
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    conn.close()
+    return {"mensaje": "Producto actualizado correctamente"}
 
 
+@app.post("/producto/")
+def agregar_producto(prod: ProductoNuevo):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Verificar que la categoría exista
+    cursor.execute("SELECT id FROM categorias WHERE id = %s", (prod.categoria_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    
+    # Insertar en productos
+    cursor.execute(
+        "INSERT INTO productos (nombre, categoria_id) VALUES (%s, %s)",
+        (prod.nombre, prod.categoria_id)
+    )
+    producto_id = cursor.lastrowid  # obtenemos el id recién insertado
+    
+    # Insertar en datos_productos
+    cursor.execute(
+        "INSERT INTO datos_productos (producto_id, valor, cantidad) VALUES (%s, %s, %s)",
+        (producto_id, prod.precio, prod.cantidad)
+    )
+    
+    conn.commit()
+    conn.close()
+    
+    return {"mensaje": "Producto agregado correctamente", "producto_id": producto_id}
 
-
+@app.put("/producto/{id}/categoria")
+def actualizar_categoria(id: int, data: CategoriaUpdate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Verificar que el producto exista
+    cursor.execute("SELECT id FROM productos WHERE id = %s", (id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+    
+    # Verificar que la categoría exista
+    cursor.execute("SELECT id FROM categorias WHERE id = %s", (data.categoria_id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+    
+    # Actualizar categoría
+    cursor.execute(
+        "UPDATE productos SET categoria_id = %s WHERE id = %s",
+        (data.categoria_id, id)
+    )
+    conn.commit()
+    conn.close()
+    
+    return {"mensaje": "Categoría del producto actualizada correctamente"}
