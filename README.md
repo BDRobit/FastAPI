@@ -1,17 +1,19 @@
-Creación de entorno virtual
+<h1> Creación de entorno virtual <h1>
 
 python -m venv venv
 
-Activar entorno virtual
+<h3> Activar entorno virtual <h3>
 
 venv\Scripts\activate
 
-Installar librerias
+<h3> Installar librerias <h3>
 
 pip install fastapi uvicorn
 pip install mysql-connector-python
 pip install bcrypt
 
+<h3> Iniciar servicio <h3>
+  
 uvicorn main:app --reload
 
 
