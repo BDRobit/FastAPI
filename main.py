@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import mysql.connector
 import hashlib
 import secrets
-
+from datetime import datetime
 
 # GET para la configuración de páginas web (filtros, ordenación, búsquedas, etc.)
 # POST para la transferencia de información y datos
@@ -45,13 +45,13 @@ class CategoriaUpdate(BaseModel): #actualiza
 
 # Productos 
 class ProductoUpdate(BaseModel): #  precio y cantidad
-    precio: float | None = None
+    precio: int | None = None
     cantidad: int | None = None
 
 class ProductoNuevo(BaseModel): # nuevo
     nombre: str
     categoria_id: int
-    precio: float
+    precio: int
     cantidad: int
 
 # Conexión a MySQL
@@ -425,7 +425,6 @@ def actualizar_producto(id: int, datos: ProductoUpdate):
 def agregar_producto(prod: ProductoNuevo):
     conn = get_db_connection()
     cursor = conn.cursor()
-    
     # Verificar que la categoría exista
     cursor.execute("SELECT id FROM categorias WHERE id = %s", (prod.categoria_id,))
     if cursor.fetchone() is None:
@@ -441,8 +440,8 @@ def agregar_producto(prod: ProductoNuevo):
     
     # Insertar en datos_productos
     cursor.execute(
-        "INSERT INTO datos_productos (producto_id, valor, cantidad) VALUES (%s, %s, %s)",
-        (producto_id, prod.precio, prod.cantidad)
+        "INSERT INTO datos_productos (producto_id, cantidad, valor, fecha_creacion) VALUES (%s, %s, %s, %s)",
+        (producto_id, prod.cantidad, prod.precio, datetime.now())
     )
     
     conn.commit()
