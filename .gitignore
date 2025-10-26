@@ -1,9 +1,12 @@
 # Ignorar entorno virtual y archivos temporales
-.venv/
+venv/
+*.env
+
 __pycache__/
 *.log
-*.env
+
 base001a.sql
 g.py
+
 auth.py
 comandos.py

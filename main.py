@@ -242,6 +242,37 @@ def crear_categoria(categoria: CategoriaCreate):
     conn.close()
     return {"mensaje": "Categoría creada correctamente", "id": nueva_id, "categoria": categoria.categoria}
 
+@app.delete("/categorias/{id}")
+def eliminar_categoria(id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Verificar si la categoría existe
+    cursor.execute("SELECT id FROM categorias WHERE id = %s", (id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+
+    # Verificar que no esté en uso por productos
+    cursor.execute("SELECT COUNT(*) AS total FROM productos WHERE categoria_id = %s", (id,))
+    resultado = cursor.fetchone()
+    if resultado["total"] > 0:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar la categoría porque está siendo utilizada por productos."
+        )
+
+    # Si no está en uso, eliminar
+    cursor.execute("DELETE FROM categorias WHERE id = %s", (id,))
+    conn.commit()
+    conn.close()
+
+    return {"mensaje": "Categoría eliminada correctamente"}
+
+
+
+
 ## sub categorias
 
 @app.get("/subcategorias")
@@ -475,3 +506,41 @@ def actualizar_categoria(id: int, data: CategoriaUpdate):
     conn.close()
     
     return {"mensaje": "Categoría del producto actualizada correctamente"}
+
+@app.delete("/producto/{id}")
+def eliminar_producto(id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Verificar si el producto existe
+    cursor.execute("SELECT id FROM productos WHERE id = %s", (id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Producto no encontrado")
+
+    # Verificar cantidad disponible
+    cursor.execute("SELECT cantidad FROM datos_productos WHERE producto_id = %s", (id,))
+    datos = cursor.fetchone()
+    if not datos:
+        conn.close()
+        raise HTTPException(status_code=404, detail="No hay datos asociados al producto")
+
+    if datos["cantidad"] > 0:
+        conn.close()
+        raise HTTPException(status_code=400, detail="No se puede eliminar un producto con stock disponible. Primero deje cantidad en 0.")
+
+    # Eliminar de datos_productos
+    cursor.execute("DELETE FROM datos_productos WHERE producto_id = %s", (id,))
+
+    # Luego eliminar el producto
+    cursor.execute("DELETE FROM productos WHERE id = %s", (id,))
+    conn.commit()
+    conn.close()
+
+    return {"mensaje": "Producto eliminado correctamente"}
+
+
+
+
+
+
