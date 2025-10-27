@@ -5,8 +5,9 @@ venv/
 __pycache__/
 *.log
 
-base001a.sql
-g.py
+db.py
+
+
 
 auth.py
 comandos.py

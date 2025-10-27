@@ -1,9 +1,21 @@
 from fastapi import FastAPI, HTTPException 
 from pydantic import BaseModel
-import mysql.connector
+from db import get_db_connection 
 import hashlib
 import secrets
 from datetime import datetime
+from models import (
+    VinculacionRequest,
+    LoginRequest,
+    CategoriaCreate,
+    CategoriaUpdate,
+    SubCategoriaCreate,
+    UsuarioNombre,
+    UsuarioContrasena,
+    ProductoNuevo,
+    ProductoUpdate
+)
+
 
 # GET para la configuración de páginas web (filtros, ordenación, búsquedas, etc.)
 # POST para la transferencia de información y datos
@@ -14,54 +26,14 @@ app = FastAPI(
     version="0.1.0"
 )
 
-# Modelo para recibir datos del front
-class VinculacionRequest(BaseModel):
-    correo: str
-    codigo: int
 
-class LoginRequest(BaseModel):
-    nombre: str
-    contrasena: str 
-class ProductoUpdate(BaseModel):
-    nombre: str
-    descripcion: str
-
-class CategoriaCreate(BaseModel):
-    categoria: str
-
-class SubCategoriaCreate(BaseModel):
-    nombre: str
-
-# Modelo para actualizar solo nombre
-class UsuarioNombre(BaseModel):
-    nombre: str
-
-# Modelo para actualizar solo contraseña
-class UsuarioContrasena(BaseModel):
-    contrasena: str
-
-class CategoriaUpdate(BaseModel): #actualiza
-    categoria_id: int    
-
-# Productos 
-class ProductoUpdate(BaseModel): #  precio y cantidad
-    precio: int | None = None
-    cantidad: int | None = None
-
-class ProductoNuevo(BaseModel): # nuevo
-    nombre: str
-    categoria_id: int
-    precio: int
-    cantidad: int
-
-# Conexión a MySQL
-def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",
-        user="root",
-        password="",
-        database="base0001a"
-    )
+# ---  Verificación para APP ---
+@app.get("/")
+def root():
+    return {
+        "message": "API funcionando correctamente",
+        "Estado":"Ok"
+        }
 
 # --- Vinculacion y logueo  ---
 
@@ -269,8 +241,6 @@ def eliminar_categoria(id: int):
     conn.close()
 
     return {"mensaje": "Categoría eliminada correctamente"}
-
-
 
 
 ## sub categorias
