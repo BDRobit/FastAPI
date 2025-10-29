@@ -1,9 +1,9 @@
 from fastapi import FastAPI, HTTPException 
-from pydantic import BaseModel
 from db import get_db_connection 
 import hashlib
 import secrets
 from datetime import datetime
+from utils import generar_transaccion
 from models import (
     VinculacionRequest,
     LoginRequest,
@@ -13,7 +13,9 @@ from models import (
     UsuarioNombre,
     UsuarioContrasena,
     ProductoNuevo,
-    ProductoUpdate
+    ProductoUpdate,
+    VentaItem,
+    VentaCreate
 )
 
 
@@ -32,8 +34,9 @@ app = FastAPI(
 def root():
     return {
         "message": "API funcionando correctamente",
-        "Estado":"Ok"
+        "status":"Ok"
         }
+
 
 # --- Vinculacion y logueo  ---
 
@@ -97,6 +100,86 @@ def login(data: LoginRequest):
         raise HTTPException(status_code=401, detail="Credenciales inválidas o vinculación no válida")
 
 
+#####################################################
+#  Usuarios
+
+@app.get("/rol")
+def listar_roles():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT id, rol FROM rol")
+    rol = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return {"rol": rol}
+
+
+@app.get("/usuarios")
+def listar_usuarios():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT id, nombre FROM usuarios")
+    usuarios = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return {"usuario": usuarios}
+
+
+@app.put("/usuarios/{id}/nombre")
+def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
+    existente = cursor.fetchone()
+    if not existente:
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    cursor.execute("""
+        UPDATE usuarios
+        SET nombre = %s
+        WHERE id = %s
+    """, (usuario.nombre, id))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return {"mensaje": "Nombre de usuario actualizado correctamente", "id": id}
+
+
+# ✅ Actualizar solo la contraseña (MD5)
+@app.put("/usuarios/{id}/contrasena")
+def actualizar_contrasena_usuario(id: int, usuario: UsuarioContrasena):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
+    existente = cursor.fetchone()
+    if not existente:
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    hashed_pass = hashlib.md5(usuario.contrasena.encode()).hexdigest()
+
+    cursor.execute("""
+        UPDATE usuarios
+        SET contraseña = %s
+        WHERE id = %s
+    """, (hashed_pass, id))
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return {"mensaje": "Contraseña actualizada correctamente", "id": id}
+
+#############################################################
 # --- Bodega ver producto ---
 
 @app.get("/producto/{id}")
@@ -180,187 +263,16 @@ def update_producto(id: int, producto: ProductoUpdate):
 
     return {"mensaje": "Producto actualizado correctamente", "id": id}
 
-############################################################
-## Categorias
-
-@app.get("/categorias")
-def listar_categorias():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("SELECT id, categoria FROM categorias")
-    categorias = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-    return {"categorias": categorias}
-
-@app.post("/categorias")
-def crear_categoria(categoria: CategoriaCreate):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Insertar nueva categoría
-    cursor.execute(
-        "INSERT INTO categorias (categoria) VALUES (%s)",
-        (categoria.categoria,)
-    )
-    conn.commit()
-
-    # Obtener el id autogenerado
-    nueva_id = cursor.lastrowid
-
-    cursor.close()
-    conn.close()
-    return {"mensaje": "Categoría creada correctamente", "id": nueva_id, "categoria": categoria.categoria}
-
-@app.delete("/categorias/{id}")
-def eliminar_categoria(id: int):
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    # Verificar si la categoría existe
-    cursor.execute("SELECT id FROM categorias WHERE id = %s", (id,))
-    if cursor.fetchone() is None:
-        conn.close()
-        raise HTTPException(status_code=404, detail="Categoría no encontrada")
-
-    # Verificar que no esté en uso por productos
-    cursor.execute("SELECT COUNT(*) AS total FROM productos WHERE categoria_id = %s", (id,))
-    resultado = cursor.fetchone()
-    if resultado["total"] > 0:
-        conn.close()
-        raise HTTPException(
-            status_code=400,
-            detail="No se puede eliminar la categoría porque está siendo utilizada por productos."
-        )
-
-    # Si no está en uso, eliminar
-    cursor.execute("DELETE FROM categorias WHERE id = %s", (id,))
-    conn.commit()
-    conn.close()
-
-    return {"mensaje": "Categoría eliminada correctamente"}
-
-
-## sub categorias
-
-@app.get("/subcategorias")
-def listar_subcategorias():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("SELECT id, nombre FROM sub_categorias")
-    subcategorias = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-    return {"subcategorias": subcategorias}
-
-@app.post("/subcategorias")
-def crear_subcategoria(categorias: SubCategoriaCreate):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    # Insertar nueva categoría
-    cursor.execute(
-        "INSERT INTO sub_categorias (nombre) VALUES (%s)",
-        (categorias.nombre,)
-    )
-    conn.commit()
-
-    # Obtener el id autogenerado
-    nueva_id = cursor.lastrowid
-
-    cursor.close()
-    conn.close()
-
-    return {"mensaje": "Subcategoría creada correctamente", "id": nueva_id, "categoria": categorias.nombre}
-
-#####################################################
-#  Usuarios
-
-@app.get("/rol")
-def listar_roles():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("SELECT id, rol FROM rol")
-    rol = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-    return {"rol": rol}
 
 
 
 
 
-@app.get("/usuarios")
-def listar_usuarios():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
-
-    cursor.execute("SELECT id, nombre FROM usuarios")
-    usuarios = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
-    return {"usuario": usuarios}
 
 
-@app.put("/usuarios/{id}/nombre")
-def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre):
-    conn = get_db_connection()
-    cursor = conn.cursor()
+#########################################################
+#-- Producto -- 
 
-    cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
-    existente = cursor.fetchone()
-    if not existente:
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-    cursor.execute("""
-        UPDATE usuarios
-        SET nombre = %s
-        WHERE id = %s
-    """, (usuario.nombre, id))
-    conn.commit()
-    cursor.close()
-    conn.close()
-    return {"mensaje": "Nombre de usuario actualizado correctamente", "id": id}
-
-
-# ✅ Actualizar solo la contraseña (MD5)
-@app.put("/usuarios/{id}/contrasena")
-def actualizar_contrasena_usuario(id: int, usuario: UsuarioContrasena):
-    conn = get_db_connection()
-    cursor = conn.cursor()
-
-    cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
-    existente = cursor.fetchone()
-    if not existente:
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-
-    hashed_pass = hashlib.md5(usuario.contrasena.encode()).hexdigest()
-
-    cursor.execute("""
-        UPDATE usuarios
-        SET contraseña = %s
-        WHERE id = %s
-    """, (hashed_pass, id))
-    conn.commit()
-
-    cursor.close()
-    conn.close()
-
-    return {"mensaje": "Contraseña actualizada correctamente", "id": id}
-
-
-# 
 @app.get("/muestra_productos")
 def muestra_productos():
     conn = get_db_connection()
@@ -511,6 +423,201 @@ def eliminar_producto(id: int):
 
 
 
+############################################################
+## Categorias
+
+@app.get("/categorias")
+def listar_categorias():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT id, categoria FROM categorias")
+    categorias = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return {"categorias": categorias}
+
+@app.post("/categorias")
+def crear_categoria(categoria: CategoriaCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Insertar nueva categoría
+    cursor.execute(
+        "INSERT INTO categorias (categoria) VALUES (%s)",
+        (categoria.categoria,)
+    )
+    conn.commit()
+
+    # Obtener el id autogenerado
+    nueva_id = cursor.lastrowid
+
+    cursor.close()
+    conn.close()
+    return {"mensaje": "Categoría creada correctamente", "id": nueva_id, "categoria": categoria.categoria}
+
+@app.delete("/categorias/{id}")
+def eliminar_categoria(id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Verificar si la categoría existe
+    cursor.execute("SELECT id FROM categorias WHERE id = %s", (id,))
+    if cursor.fetchone() is None:
+        conn.close()
+        raise HTTPException(status_code=404, detail="Categoría no encontrada")
+
+    # Verificar que no esté en uso por productos
+    cursor.execute("SELECT COUNT(*) AS total FROM productos WHERE categoria_id = %s", (id,))
+    resultado = cursor.fetchone()
+    if resultado["total"] > 0:
+        conn.close()
+        raise HTTPException(
+            status_code=400,
+            detail="No se puede eliminar la categoría porque está siendo utilizada por productos."
+        )
+
+    # Si no está en uso, eliminar
+    cursor.execute("DELETE FROM categorias WHERE id = %s", (id,))
+    conn.commit()
+    conn.close()
+
+    return {"mensaje": "Categoría eliminada correctamente"}
+
+
+## sub categorias
+
+@app.get("/subcategorias")
+def listar_subcategorias():
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    cursor.execute("SELECT id, nombre FROM sub_categorias")
+    subcategorias = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return {"subcategorias": subcategorias}
+
+@app.post("/subcategorias")
+def crear_subcategoria(categorias: SubCategoriaCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Insertar nueva categoría
+    cursor.execute(
+        "INSERT INTO sub_categorias (nombre) VALUES (%s)",
+        (categorias.nombre,)
+    )
+    conn.commit()
+
+    nueva_id = cursor.lastrowid    # Obtener el id autogenerado
+
+    cursor.close()
+    conn.close()
+
+    return {"mensaje": "Subcategoría creada correctamente", "id": nueva_id, "categoria": categorias.nombre}
 
 
 
+
+@app.post("/ventas")
+def procesar_venta(venta: VentaCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    try:
+
+        transaccion = generar_transaccion()
+
+        # Verificar cada producto
+        total_calculado = 0
+        for item in venta.items:
+
+            cursor.execute("""
+                SELECT p.id, p.nombre, d.valor as precio, d.cantidad as stock   
+                FROM productos p
+                JOIN datos_productos d ON p.id = d.producto_id
+                Where p.id=%s;
+                """, (item.id,))
+
+            producto_bd = cursor.fetchone()
+            if not producto_bd:
+                conn.close()
+                raise HTTPException(status_code=404, detail=f"Producto {item.id} no encontrado")
+            
+            # Validar precio
+            if producto_bd['precio'] != item.precio:
+                conn.close()
+                raise HTTPException(status_code=400, detail=f"Precio del producto {item.id} no coincide")
+            
+            # Validar stock
+            if producto_bd['stock'] < item.cantidad:
+                conn.close()
+                raise HTTPException(status_code=400, detail=f"No hay stock suficiente para el producto {item.id}")
+            
+            total_calculado += item.subtotal
+
+            IVA = 0.19
+
+            for item in venta.items:
+                # Calcular precio con IVA según el precio unitario
+                precio_con_iva_calculado = round(item.precio * (1 + IVA))
+
+                if precio_con_iva_calculado != item.precio_con_iva:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El precio con IVA del producto ID {item.id} no es válido. "
+                            f"Debe ser {precio_con_iva_calculado} y llegó {item.precio_con_iva}"
+                    )
+
+                # Calcular subtotal según la cantidad
+                subtotal_calculado = precio_con_iva_calculado * item.cantidad
+                if subtotal_calculado != item.subtotal:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"El subtotal del producto ID {item.id} es incorrecto. "
+                            f"Debe ser {subtotal_calculado} y llegó {item.subtotal}"
+                    )
+
+        # Validar total
+        if total_calculado != venta.total:
+            conn.close()
+            raise HTTPException(status_code=400, detail="El total no coincide con la suma de subtotales")
+
+        #####  Aca si algo falla deberia de hacer rollback
+
+
+
+        # Insertar venta
+        cursor.execute("INSERT INTO ventas (transaccion, fecha, hora, total) VALUES (%s, %s, %s, %s)", 
+                    (transaccion,venta.fecha, venta.hora, venta.total))
+        venta_id = cursor.lastrowid
+
+        # Insertar items y actualizar stock
+        for item in venta.items:
+            cursor.execute(
+                "INSERT INTO detalle_ventas (venta_id, producto_id, cantidad, precio, precio_con_iva, subtotal) VALUES (%s, %s, %s, %s, %s, %s)",
+                (venta_id, item.id, item.cantidad, item.precio, item.precio_con_iva, item.subtotal)
+            )
+            cursor.execute("""
+                            UPDATE datos_productos 
+                            SET cantidad = cantidad - %s
+                            WHERE producto_id=%s
+                            """,
+                (item.cantidad, item.id)
+            )
+
+        conn.commit()
+        conn.close()
+
+        # Retornar mensaje
+        return {"mensaje": "Venta realizada con éxito", "numero_transaccion": transaccion}
+
+    except Exception as e:
+        conn.rollback()  # <<< IMPORTANTE: Revertimos todo si algo falla
+        raise HTTPException(status_code=500, detail=f"Error en la venta: {str(e)}")
+
+    finally:
+        conn.close()

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-
+from typing import List
 # -------- Vinculación y Login --------
 class VinculacionRequest(BaseModel):
     correo: str
@@ -43,4 +43,17 @@ class SubCategoriaCreate(BaseModel):
 
 
 
+class VentaItem(BaseModel):
+    id: int
+    producto: str
+    precio: float
+    precio_con_iva: float
+    cantidad: int
+    subtotal: float
+
+class VentaCreate(BaseModel):
+    fecha: str
+    hora: str
+    total: float
+    items: List[VentaItem]
 
