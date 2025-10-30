@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException 
 from db import get_db_connection 
-import hashlib
+import hashlib, re
 import secrets
 from datetime import datetime
 from utils import generar_transaccion
@@ -72,9 +72,10 @@ def login(data: LoginRequest):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
     
-    # ⚠️ Aquí podrías usar hash con bcrypt en lugar de MD5
-    #hashed_pass = hashlib.md5(data.contraseña.encode()).hexdigest()
-    print("llegada",data)
+    # Validar que sea un hash MD5 (32 caracteres hexadecimales)
+    if not re.fullmatch(r"[a-fA-F0-9]{32}", data.contrasena):
+        raise HTTPException(status_code=400, detail="Formato de hash inválido")
+        
     cursor.execute("""
         SELECT u.nombre, u.contraseña, r.rol 
         FROM usuarios u
@@ -85,10 +86,6 @@ def login(data: LoginRequest):
 
     usuario = cursor.fetchone()
     conn.close()
-
-    print("cursor", cursor)
-    #print("hashed_pass",hashed_pass)
-    print("salida",usuario)
 
     if usuario:
         return {
