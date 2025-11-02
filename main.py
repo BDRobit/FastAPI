@@ -15,7 +15,8 @@ from models import (
     ProductoNuevo,
     ProductoUpdate,
     VentaItem,
-    VentaCreate
+    VentaCreate,
+    UsuarioCreate
 )
 
 
@@ -125,6 +126,46 @@ def listar_usuarios():
     conn.close()
     return {"usuario": usuarios}
 
+@app.post("/usuario")
+def crear_usuario(usuario: UsuarioCreate):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # 1. Verificar si el nombre ya existe
+    cursor.execute("SELECT id FROM usuarios WHERE nombre = %s", (usuario.nombre,))
+    if cursor.fetchone():
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="El nombre de usuario ya está en uso.")
+
+    # 2. Validar rol
+    cursor.execute("SELECT rol FROM rol WHERE id = %s", (usuario.rol_id,))
+    rol = cursor.fetchone()
+    if not rol:
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="El rol especificado no existe.")
+
+    if rol['rol'].lower() == "administrador":
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=403, detail="No es posible asignar el rol de administrador.")
+
+    # 3. Validar que sea un hash MD5 (32 caracteres hexadecimales)
+    if not re.fullmatch(r"[a-fA-F0-9]{32}", usuario.contrasena):
+        raise HTTPException(status_code=400, detail="Formato de hash inválido")
+
+    # 4. Insertar el nuevo usuario
+    cursor.execute(
+        "INSERT INTO usuarios (cliente_id, nombre, contraseña, rol_id, fecha_creacion) VALUES (%s, %s, %s, %s,%s)",
+        (1, usuario.nombre, usuario.contrasena, usuario.rol_id, usuario.fecha)
+    )
+    conn.commit()
+
+    cursor.close()
+    conn.close()
+
+    return {"message": "Usuario creado exitosamente."}
 
 @app.put("/usuarios/{id}/nombre")
 def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre):

@@ -57,3 +57,8 @@ class VentaCreate(BaseModel):
     total: float
     items: List[VentaItem]
 
+class UsuarioCreate(BaseModel):
+    nombre: str
+    contrasena: str
+    rol_id: int
+    fecha: str
