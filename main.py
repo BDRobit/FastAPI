@@ -149,7 +149,7 @@ def crear_usuario(usuario: UsuarioCreate):
             detail=f"El nombre debe tener la primera letra en mayúscula y el resto en minúscula. Formato esperado: '{nombre_esperado}'."
         )
     # negacion a crear un administrador
-    if rol['rol'].lower() == "administrador":
+    if usuario.rol_id == 1:
         cursor.close()
         conn.close()
         raise HTTPException(status_code=403, detail="No es posible asignar el rol de administrador.")

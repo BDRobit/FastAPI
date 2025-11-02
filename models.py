@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 from typing import List
+from datetime import datetime
 # -------- Vinculación y Login --------
 class VinculacionRequest(BaseModel):
     correo: str
@@ -61,4 +62,4 @@ class UsuarioCreate(BaseModel):
     nombre: str
     contrasena: str
     rol_id: int
-    fecha: str
+    fecha: datetime
