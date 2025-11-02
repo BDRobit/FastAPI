@@ -131,6 +131,33 @@ def crear_usuario(usuario: UsuarioCreate):
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
+    # --------------------
+    # Verificacion de solo letras
+    if not re.fullmatch(r"^[a-zA-Z]+$", usuario.nombre):
+        raise HTTPException(
+            status_code=400, 
+            detail="Solo debe contener letras empezando con mayuscula y sin espacios."
+        )
+
+    # Comparacion de enviado con esperado
+    nombre_enviado = usuario.nombre.strip()
+    nombre_esperado = nombre_enviado.capitalize()
+    
+    if nombre_enviado != nombre_esperado:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"El nombre debe tener la primera letra en mayúscula y el resto en minúscula. Formato esperado: '{nombre_esperado}'."
+        )
+    # negacion a crear un administrador
+    if rol['rol'].lower() == "administrador":
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=403, detail="No es posible asignar el rol de administrador.")
+
+    # Validar que sea un hash MD5 (32 caracteres hexadecimales)
+    if not re.fullmatch(r"[a-fA-F0-9]{32}", usuario.contrasena):
+        raise HTTPException(status_code=400, detail="Formato de hash inválido")
+
     # 1. Verificar si el nombre ya existe
     cursor.execute("SELECT id FROM usuarios WHERE nombre = %s", (usuario.nombre,))
     if cursor.fetchone():
@@ -145,15 +172,6 @@ def crear_usuario(usuario: UsuarioCreate):
         cursor.close()
         conn.close()
         raise HTTPException(status_code=400, detail="El rol especificado no existe.")
-
-    if rol['rol'].lower() == "administrador":
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=403, detail="No es posible asignar el rol de administrador.")
-
-    # 3. Validar que sea un hash MD5 (32 caracteres hexadecimales)
-    if not re.fullmatch(r"[a-fA-F0-9]{32}", usuario.contrasena):
-        raise HTTPException(status_code=400, detail="Formato de hash inválido")
 
     # 4. Insertar el nuevo usuario
     cursor.execute(
