@@ -63,3 +63,7 @@ class UsuarioCreate(BaseModel):
     contrasena: str
     rol_id: int
     fecha: datetime
+
+class VinculacionRequest(BaseModel):
+    correo: str
+    codigo: str

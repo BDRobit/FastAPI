@@ -1,9 +1,11 @@
 from fastapi import FastAPI, HTTPException 
-from db import get_db_connection 
+from db import get_db_connection, get_db_connection_cliente, get_db_connection_principal  
 import hashlib, re
 import secrets
 from datetime import datetime
 from utils import generar_transaccion
+from typing import Optional
+from fastapi import status
 from models import (
     VinculacionRequest,
     LoginRequest,
@@ -38,33 +40,68 @@ def root():
         "status":"Ok"
         }
 
+def get_client_db_name(correo: str, codigo: str) -> Optional[str]:
+    """Obtiene el nombre de la BD del cliente verificando correo y código."""
+    conn_principal = get_db_connection_principal()
+    cursor = conn_principal.cursor(dictionary=True)
+    db_name = None
+    try:
+        cursor.execute("""
+            SELECT bd.base_datos
+            FROM cliente c
+            JOIN base_datos bd ON c.id = bd.cliente_id
+            WHERE c.correo = %s AND c.codigo = %s
+        """, (correo, codigo))
+        
+        result = cursor.fetchone()
+        if result:
+            db_name = result["base_datos"]
+    finally:
+        cursor.close()
+        conn_principal.close()
+        
+    return db_name
 
-# --- Vinculacion y logueo  ---
+#---  vincular  ---
+from fastapi import FastAPI, HTTPException, status
+import secrets
 
 @app.post("/vincular")
-def vincular(data: VinculacionRequest):
+def vincular_cliente(data: VinculacionRequest):
+    # 1. PASO DE BÚSQUEDA: Obtener el nombre de la BD.
+    db_name = get_client_db_name(data.correo, data.codigo)
 
-    print("datos",data)
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+    if not db_name:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Correo o código incorrectos, o cliente no encontrado."
+        )
+        
+    # 2. PASO DE CONEXIÓN: Conectarse a la BD dinámica.
+    conn_cliente = get_db_connection_cliente(db_name)
+    
+    if not conn_cliente:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Error al conectar con la base de datos del cliente."
+        )
 
-    cursor.execute("SELECT correo , codigo FROM cliente WHERE correo=%s AND codigo=%s", 
-                    (data.correo, data.codigo))
-    usuario = cursor.fetchone()
-
-    print("vincular",usuario)
-
-    if usuario:
-        # Generar código de vinculación único
+    try:
+        cursor_cliente = conn_cliente.cursor(dictionary=True)
         codigo_vinculacion = secrets.token_hex(8)
-        cursor.execute("insert into codigo (codigo_vinculacion) values (%s)", 
-                        (codigo_vinculacion,))
-        conn.commit()
-        conn.close()
-        return {"status": "ok", "codigo_vinculacion": codigo_vinculacion}
-    else:
-        conn.close()
-        raise HTTPException(status_code=401, detail="Correo o código inválido")
+
+        cursor_cliente.execute(
+            "INSERT INTO codigo (codigo_vinculacion) VALUES (%s)",
+            (codigo_vinculacion,)
+        )
+        conn_cliente.commit()
+        
+        return {
+            "cliente_db": db_name,
+            "codigo_generado": codigo_vinculacion
+        }
+    finally:
+        conn_cliente.close()
 
 # --- Login con rol ---
 @app.post("/login")
