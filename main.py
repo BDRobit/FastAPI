@@ -156,7 +156,13 @@ def listar_usuarios():
     conn = get_db_connection()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT id, nombre FROM usuarios")
+    cursor.execute("""
+                   SELECT u.id, u.nombre, r.rol 
+                   FROM usuarios u
+                   JOIN rol r
+                   WHERE u.rol_id = r.id
+                   order by u.id asc
+                   """)
     usuarios = cursor.fetchall()
 
     cursor.close()
