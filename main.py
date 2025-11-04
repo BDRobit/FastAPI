@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException 
+from fastapi import FastAPI, HTTPException, Query 
 from db import get_db_connection, get_db_connection_cliente, get_db_connection_principal  
 import hashlib, re
 import secrets
@@ -720,3 +720,58 @@ def procesar_venta(venta: VentaCreate):
 
     finally:
         conn.close()
+
+@app.get("/ListadoVentas")
+def listar_ventas(
+    start_date: Optional[str] = Query(None, description="Fecha de inicio en formato YYYY-MM-DD"),
+    end_date: Optional[str] = Query(None, description="Fecha de fin en formato YYYY-MM-DD")
+):
+    conn = get_db_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    # Construimos la consulta base
+    query = """
+        SELECT 
+            v.id AS venta_id,
+            v.transaccion,
+            v.fecha,
+            v.hora,
+            v.total AS total_venta,
+            u.nombre AS vendedor,
+            p.nombre AS producto,
+            dv.cantidad,
+            dv.precio,
+            dv.precio_con_iva,
+            dv.subtotal
+        FROM 
+            ventas v
+        LEFT JOIN 
+            usuarios u ON v.id_usuario = u.id
+        LEFT JOIN 
+            detalle_ventas dv ON dv.venta_id = v.id
+        LEFT JOIN 
+            datos_productos dp ON dv.producto_id = dp.id
+        LEFT JOIN 
+            productos p ON dp.producto_id = p.id
+    """
+
+    # Filtro opcional por fechas
+    params = []
+    if start_date and end_date:
+        query += " WHERE v.fecha BETWEEN %s AND %s"
+        params.extend([start_date, end_date])
+    elif start_date:
+        query += " WHERE v.fecha >= %s"
+        params.append(start_date)
+    elif end_date:
+        query += " WHERE v.fecha <= %s"
+        params.append(end_date)
+
+    query += " ORDER BY v.fecha DESC, v.hora DESC, v.id, dv.id;"
+
+    cursor.execute(query, tuple(params))
+    ventas = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+    return {"Ventas": ventas}
