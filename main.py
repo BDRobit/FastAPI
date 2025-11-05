@@ -1,8 +1,8 @@
-from fastapi import FastAPI, HTTPException, Query 
+from fastapi import FastAPI, HTTPException, Query, Depends 
 from db import get_db_connection, get_db_connection_cliente, get_db_connection_principal  
 import hashlib, re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from utils import generar_transaccion
 from typing import Optional
 from fastapi import status
@@ -20,6 +20,13 @@ from models import (
     VentaCreate,
     UsuarioCreate
 )
+from auth import require_admin, require_bodega, require_cajero
+import jwt
+from auth import ALGORITHM, SECRET_KEY
+from fastapi.security import HTTPBearer
+from fastapi import Security
+
+auth_scheme = HTTPBearer()
 
 
 # GET para la configuración de páginas web (filtros, ordenación, búsquedas, etc.)
@@ -66,6 +73,7 @@ def get_client_db_name(correo: str, codigo: str) -> Optional[str]:
 from fastapi import FastAPI, HTTPException, status
 import secrets
 
+
 @app.post("/vincular")
 def vincular_cliente(data: VinculacionRequest):
     # 1. PASO DE BÚSQUEDA: Obtener el nombre de la BD.
@@ -91,14 +99,15 @@ def vincular_cliente(data: VinculacionRequest):
         codigo_vinculacion = secrets.token_hex(8)
 
         cursor_cliente.execute(
-            "INSERT INTO codigo (codigo_vinculacion) VALUES (%s)",
-            (codigo_vinculacion,)
+            "INSERT INTO codigo (codigo_vinculacion, fecha_vinculacion) VALUES (%s, %s)",
+            (codigo_vinculacion, data.fecha)
         )
         conn_cliente.commit()
         
         return {
             "cliente_db": db_name,
-            "codigo_generado": codigo_vinculacion
+            "codigo_generado": codigo_vinculacion,
+            "fecha_generacion": data.fecha
         }
     finally:
         conn_cliente.close()
@@ -115,7 +124,7 @@ def login(data: LoginRequest):
         raise HTTPException(status_code=400, detail="Formato de hash inválido")
         
     cursor.execute("""
-        SELECT u.nombre, u.contraseña, r.rol 
+        SELECT u.id, u.nombre, u.contraseña, r.rol 
         FROM usuarios u
         JOIN rol r ON u.rol_id = r.id
         WHERE u.nombre = %s 
@@ -125,6 +134,31 @@ def login(data: LoginRequest):
     usuario = cursor.fetchone()
     conn.close()
 
+    
+    if usuario:
+        # Crear el payload del token
+        payload = {
+            "sub": str(usuario["id"]),
+            "nombre": usuario["nombre"],
+            "rol": usuario["rol"]
+        }
+
+        # Generar el token
+        token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+        print(token)
+        token2 = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        print(token2)
+        return {
+            "status": "ok",
+            "rol": usuario["rol"],
+            "token": token,
+            "acceso": f"Panel de {usuario['rol']}"
+        }
+
+    else:
+        raise HTTPException(status_code=401, detail="Credenciales inválidas o vinculación no válida")
+
+    """
     if usuario:
         return {
             "status": "ok",
@@ -133,7 +167,7 @@ def login(data: LoginRequest):
         }
     else:
         raise HTTPException(status_code=401, detail="Credenciales inválidas o vinculación no válida")
-
+    """
 
 #####################################################
 #  Usuarios
@@ -588,15 +622,20 @@ def eliminar_categoria(id: int):
 ## sub categorias
 
 @app.get("/subcategorias")
-def listar_subcategorias():
-    conn = get_db_connection()
-    cursor = conn.cursor(dictionary=True)
+def listar_subcategorias(
+    cliente_db: str,
+    codigo: str,
+    payload: dict = Depends(require_admin)
+    ):
+    print("Usuario logueado:", payload)
+    conn_client = get_db_connection_cliente(cliente_db)
+    cursor = conn_client.cursor(dictionary=True)
 
     cursor.execute("SELECT id, nombre FROM sub_categorias")
     subcategorias = cursor.fetchall()
 
     cursor.close()
-    conn.close()
+    conn_client.close()
     return {"subcategorias": subcategorias}
 
 @app.post("/subcategorias")

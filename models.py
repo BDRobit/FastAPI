@@ -67,3 +67,4 @@ class UsuarioCreate(BaseModel):
 class VinculacionRequest(BaseModel):
     correo: str
     codigo: str
+    fecha: str
