@@ -20,7 +20,7 @@ from models import (
     UsuarioCreate
 )
 from auth import require_admin, require_bodega, require_cajero, requiere_acceso
-from jose import jwt
+import jwt
 from auth import ALGORITHM, SECRET_KEY
 from fastapi.security import HTTPBearer
 from fastapi import Security
@@ -110,6 +110,9 @@ def vincular_cliente(data: VinculacionRequest):
         token_vinculacion = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
 
         return {
+            "cliente_db": db_name,
+            "codigo_generado": codigo_vinculacion,
+            "fecha_generacion": data.fecha,
             "token_vinculacion": token_vinculacion,
         }
     finally:
