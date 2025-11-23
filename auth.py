@@ -94,3 +94,8 @@ def require_bodega(payload: dict = Depends(requiere_acceso)):
     if payload["rol"] not in ("bodega","administrador"):
         raise HTTPException(status_code=403, detail="Solo bodega o administradores pueden acceder")
     return payload
+
+def require_all(payload: dict = Depends(requiere_acceso)):
+    if payload["rol"] not in ("caja","bodega","administrador"):
+        raise HTTPException(status_code=403, detail="Sin rol no tienes pueden acceder")
+    return payload

@@ -55,6 +55,7 @@ class VentaItem(BaseModel):
 class VentaCreate(BaseModel):
     fecha: str
     hora: str
+    metodo_pago: str
     total: float
     items: List[VentaItem]
 

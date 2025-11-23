@@ -19,7 +19,7 @@ from models import (
     VentaCreate,
     UsuarioCreate
 )
-from auth import require_admin, require_bodega, require_cajero, requiere_acceso
+from auth import require_admin, require_bodega, require_cajero, requiere_acceso, require_all
 from jose import jwt
 from auth import ALGORITHM, SECRET_KEY
 from fastapi.security import HTTPBearer
@@ -153,37 +153,26 @@ def login(data: LoginRequest, payload: dict = Depends(requiere_acceso)):
 
         # Generar el token
         token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-        print(token)
-        token2 = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        print(token2)
         return {
             "status": "ok",
             "rol": usuario["rol"],
             "token": token,
-            "acceso": f"Panel de {usuario['rol']}",
-            "se borrara": f"datos enviados,{payload}"
-        }
-
-    else:
-        raise HTTPException(status_code=401, detail="Credenciales inválidas o vinculación no válida")
-
-    """
-    if usuario:
-        return {
-            "status": "ok",
-            "rol": usuario["rol"],
             "acceso": f"Panel de {usuario['rol']}"
         }
+
     else:
         raise HTTPException(status_code=401, detail="Credenciales inválidas o vinculación no válida")
-    """
+
+
 
 #####################################################
 #  Usuarios
 
 @app.get("/rol")
-def listar_roles():
-    conn = get_db_connection()
+def listar_roles( payload: dict = Depends(require_admin)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("SELECT id, rol FROM rol")
@@ -195,8 +184,10 @@ def listar_roles():
 
 
 @app.get("/usuarios")
-def listar_usuarios():
-    conn = get_db_connection()
+def listar_usuarios(payload: dict = Depends(require_admin)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("""
@@ -213,8 +204,10 @@ def listar_usuarios():
     return {"usuario": usuarios}
 
 @app.post("/usuario")
-def crear_usuario(usuario: UsuarioCreate):
-    conn = get_db_connection()
+def crear_usuario(usuario: UsuarioCreate, payload: dict = Depends(require_admin)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     # --------------------
@@ -272,8 +265,10 @@ def crear_usuario(usuario: UsuarioCreate):
     return {"message": "Usuario creado exitosamente."}
 
 @app.put("/usuarios/{id}/nombre")
-def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre):
-    conn = get_db_connection()
+def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre, payload: dict = Depends(requiere_acceso)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor()
 
     cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
@@ -296,8 +291,10 @@ def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre):
 
 # ✅ Actualizar solo la contraseña (MD5)
 @app.put("/usuarios/{id}/contrasena")
-def actualizar_contrasena_usuario(id: int, usuario: UsuarioContrasena):
-    conn = get_db_connection()
+def actualizar_contrasena_usuario(id: int, usuario: UsuarioContrasena, payload: dict = Depends(requiere_acceso)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor()
 
     cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
@@ -325,9 +322,11 @@ def actualizar_contrasena_usuario(id: int, usuario: UsuarioContrasena):
 # --- Bodega ver producto ---
 
 @app.get("/producto/{id}")
-def ver_producto(id:int):
+def ver_producto(id:int, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     
-    conn = get_db_connection()
     cursor = conn.cursor(dictionary=True) #no es opcional
     #cursor.execute( "SELECT * FROM productos WHERE id = %s", (id,))
 
@@ -354,8 +353,10 @@ def ver_producto(id:int):
             }
 
 @app.get("/productos")
-def listar_productos():
-    conn = get_db_connection()
+def listar_productos(payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)  # obligatorio para que devuelva dict
     
     cursor.execute("""
@@ -383,8 +384,10 @@ def listar_productos():
     ]
 
 @app.put("/producto/{id}")
-def update_producto(id: int, producto: ProductoUpdate):
-    conn = get_db_connection()
+def update_producto(id: int, producto: ProductoUpdate, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor()
 
     # Verificar si el producto existe
@@ -416,8 +419,10 @@ def update_producto(id: int, producto: ProductoUpdate):
 #-- Producto -- 
 
 @app.get("/muestra_productos")
-def muestra_productos():
-    conn = get_db_connection()
+def muestra_productos( payload: dict = Depends(require_cajero)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)  # obligatorio para que devuelva dict
     
     cursor.execute("""
@@ -447,8 +452,10 @@ def muestra_productos():
 
 
 @app.put("/producto/{id}/")
-def actualizar_producto(id: int, datos: ProductoUpdate):
-    conn = get_db_connection()
+def actualizar_producto(id: int, datos: ProductoUpdate, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor()
     # Construimos query dinámicamente según los campos que vienen
     campos = []
@@ -477,8 +484,11 @@ def actualizar_producto(id: int, datos: ProductoUpdate):
 
 
 @app.post("/producto/")
-def agregar_producto(prod: ProductoNuevo):
-    conn = get_db_connection()
+def agregar_producto(prod: ProductoNuevo, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
+
     cursor = conn.cursor()
     # Verificar que la categoría exista
     cursor.execute("SELECT id FROM categorias WHERE id = %s", (prod.categoria_id,))
@@ -505,8 +515,10 @@ def agregar_producto(prod: ProductoNuevo):
     return {"mensaje": "Producto agregado correctamente", "producto_id": producto_id}
 
 @app.put("/producto/{id}/categoria")
-def actualizar_categoria(id: int, data: CategoriaUpdate):
-    conn = get_db_connection()
+def actualizar_categoria(id: int, data: CategoriaUpdate, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor()
     
     # Verificar que el producto exista
@@ -532,8 +544,10 @@ def actualizar_categoria(id: int, data: CategoriaUpdate):
     return {"mensaje": "Categoría del producto actualizada correctamente"}
 
 @app.delete("/producto/{id}")
-def eliminar_producto(id: int):
-    conn = get_db_connection()
+def eliminar_producto(id: int, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     # Verificar si el producto existe
@@ -569,8 +583,10 @@ def eliminar_producto(id: int):
 ## Categorias
 
 @app.get("/categorias")
-def listar_categorias():
-    conn = get_db_connection()
+def listar_categorias( payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     cursor.execute("SELECT id, categoria FROM categorias")
@@ -581,7 +597,7 @@ def listar_categorias():
     return {"categorias": categorias}
 
 @app.post("/categorias")
-def crear_categoria(categoria: CategoriaCreate, payload: dict = Depends(require_cajero)):
+def crear_categoria(categoria: CategoriaCreate, payload: dict = Depends(require_bodega)):
     db_name = payload.get("cliente_db")
 
     conn = get_db_connection_cliente(db_name)
@@ -617,8 +633,10 @@ def crear_categoria(categoria: CategoriaCreate, payload: dict = Depends(require_
         conn.close()
 
 @app.delete("/categorias/{id}")
-def eliminar_categoria(id: int):
-    conn = get_db_connection()
+def eliminar_categoria(id: int, payload: dict = Depends(require_bodega)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     # Verificar si la categoría existe
@@ -646,7 +664,7 @@ def eliminar_categoria(id: int):
 
 
 ## sub categorias
-
+"""
 @app.get("/subcategorias")
 def listar_subcategorias(
     cliente_db: str,
@@ -683,17 +701,35 @@ def crear_subcategoria(categorias: SubCategoriaCreate):
 
     return {"mensaje": "Subcategoría creada correctamente", "id": nueva_id, "categoria": categorias.nombre}
 
-
+"""
 
 
 @app.post("/ventas")
-def procesar_venta(venta: VentaCreate):
-    conn = get_db_connection()
+def procesar_venta(venta: VentaCreate, payload: dict = Depends(require_cajero)):
+    db_name = payload.get("cliente_db")
+    usuario_nombre = payload.get("nombre")
+    usuario_rol = payload.get("r.id")
+
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     try:
 
         transaccion = generar_transaccion()
+
+        cursor.execute(
+            "SELECT id FROM usuarios WHERE nombre = %s AND rol_id = %s",
+            (usuario_nombre, usuario_rol)
+        )
+        usuario_db = cursor.fetchone()
+
+        if not usuario_db:
+            raise HTTPException(404, "Usuario no encontrado en la base de datos")
+
+        id_usuario = usuario_db["id"]
+
+
 
         # Verificar cada producto
         total_calculado = 0
@@ -752,12 +788,12 @@ def procesar_venta(venta: VentaCreate):
 
         #####  Aca si algo falla deberia de hacer rollback
 
-        #print("venta" ,venta)
+        print("venta" ,venta)
         
 
         # Insertar venta
-        cursor.execute("INSERT INTO ventas (transaccion, fecha, hora, total) VALUES (%s, %s, %s, %s)", 
-                    (transaccion,venta.fecha, venta.hora, venta.total))
+        cursor.execute("INSERT INTO ventas (transaccion, fecha, hora, total, id_usuario, metodo_pago) VALUES (%s, %s, %s, %s,%s, %s)", 
+                    (transaccion, venta.fecha, venta.hora, venta.total, id_usuario, venta.metodo_pago))
         venta_id = cursor.lastrowid
 
         print("detalle" ,venta_id, item.id, item.cantidad, item.precio, item.precio_con_iva, item.subtotal )
@@ -792,9 +828,11 @@ def procesar_venta(venta: VentaCreate):
 @app.get("/ListadoVentas")
 def listar_ventas(
     start_date: Optional[str] = Query(None, description="Fecha de inicio en formato YYYY-MM-DD"),
-    end_date: Optional[str] = Query(None, description="Fecha de fin en formato YYYY-MM-DD")
-):
-    conn = get_db_connection()
+    end_date: Optional[str] = Query(None, description="Fecha de fin en formato YYYY-MM-DD"),
+    payload: dict = Depends(require_cajero)):
+    db_name = payload.get("cliente_db")
+
+    conn = get_db_connection_cliente(db_name)
     cursor = conn.cursor(dictionary=True)
 
     # Construimos la consulta base
