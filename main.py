@@ -752,12 +752,15 @@ def procesar_venta(venta: VentaCreate):
 
         #####  Aca si algo falla deberia de hacer rollback
 
-
+        #print("venta" ,venta)
+        
 
         # Insertar venta
         cursor.execute("INSERT INTO ventas (transaccion, fecha, hora, total) VALUES (%s, %s, %s, %s)", 
                     (transaccion,venta.fecha, venta.hora, venta.total))
         venta_id = cursor.lastrowid
+
+        print("detalle" ,venta_id, item.id, item.cantidad, item.precio, item.precio_con_iva, item.subtotal )
 
         # Insertar items y actualizar stock
         for item in venta.items:
@@ -766,9 +769,9 @@ def procesar_venta(venta: VentaCreate):
                 (venta_id, item.id, item.cantidad, item.precio, item.precio_con_iva, item.subtotal)
             )
             cursor.execute("""
-                            UPDATE datos_productos 
+                            UPDATE datos_productos
                             SET cantidad = cantidad - %s
-                            WHERE producto_id=%s
+                            WHERE producto_id = %s;
                             """,
                 (item.cantidad, item.id)
             )
@@ -808,16 +811,13 @@ def listar_ventas(
             dv.precio,
             dv.precio_con_iva,
             dv.subtotal
-        FROM 
-            ventas v
-        LEFT JOIN 
-            usuarios u ON v.id_usuario = u.id
-        LEFT JOIN 
-            detalle_ventas dv ON dv.venta_id = v.id
-        LEFT JOIN 
-            datos_productos dp ON dv.producto_id = dp.id
-        LEFT JOIN 
-            productos p ON dp.producto_id = p.id
+        FROM ventas v
+        LEFT JOIN usuarios u 
+            ON v.id_usuario = u.id
+        LEFT JOIN detalle_ventas dv 
+            ON dv.venta_id = v.id
+        LEFT JOIN productos p 
+            ON dv.producto_id = p.id
     """
 
     # Filtro opcional por fechas
