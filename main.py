@@ -269,24 +269,75 @@ def actualizar_nombre_usuario(id: int, usuario: UsuarioNombre, payload: dict = D
     db_name = payload.get("cliente_db")
 
     conn = get_db_connection_cliente(db_name)
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
-    cursor.execute("SELECT id FROM usuarios WHERE id = %s", (id,))
+    # 1. Validar que el usuario exista
+    cursor.execute("SELECT id, nombre, rol_id FROM usuarios WHERE id = %s", (id,))
     existente = cursor.fetchone()
+
     if not existente:
         cursor.close()
         conn.close()
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
+    # 2. Validar que el nombre del token coincida con el nombre actual del usuario
+    nombre_en_token = payload.get("nombre")
+
+    if existente["nombre"] != nombre_en_token:
+        cursor.close()
+        conn.close()
+        raise HTTPException(
+            status_code=403,
+            detail="Tu token no coincide con tu nombre actual. Por favor inicia sesión para generar un nuevo token."
+        )
+
+    # 3. Validar que el nuevo nombre NO esté ocupado por otro usuario
+    cursor.execute("SELECT id FROM usuarios WHERE nombre = %s AND id != %s", (usuario.nombre, id))
+    repetido = cursor.fetchone()
+
+    if repetido:
+        cursor.close()
+        conn.close()
+        raise HTTPException(status_code=400, detail="El nombre ya existe, elige otro.")
+
+    # 4. Actualizar el nombre
     cursor.execute("""
         UPDATE usuarios
         SET nombre = %s
         WHERE id = %s
     """, (usuario.nombre, id))
     conn.commit()
+
+    # 5. Obtener nuevamente info del usuario
+    cursor.execute("""
+        SELECT u.id, u.nombre, r.rol
+        FROM usuarios u
+        JOIN rol r ON u.rol_id = r.id
+        WHERE u.id = %s
+    """, (id,))
+    user_data = cursor.fetchone()
+
     cursor.close()
     conn.close()
-    return {"mensaje": "Nombre de usuario actualizado correctamente", "id": id}
+
+    # 6. Generar nuevo token con el nombre actualizado
+    nuevo_payload = {
+        "sub": payload.get("sub"),
+        "codigo_vinculacion": payload.get("codigo_vinculacion"),
+        "cliente_db": payload.get("cliente_db"),
+        "r.id": str(user_data["id"]),
+        "nombre": user_data["nombre"],  # actualizado
+        "rol": user_data["rol"]
+    }
+
+    nuevo_token = jwt.encode(nuevo_payload, SECRET_KEY, algorithm=ALGORITHM)
+
+    return {
+        "mensaje": "Nombre actualizado correctamente",
+        "nuevo_nombre": usuario.nombre,
+        "nuevo_token": nuevo_token
+    }
+
 
 
 # ✅ Actualizar solo la contraseña (MD5)
